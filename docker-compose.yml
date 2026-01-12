@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  mm-bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: 01xyz-market-maker
+    environment:
+      - PRIVATE_KEY_BASE58=${PRIVATE_KEY_BASE58}
+      - RPC_ENDPOINT=${RPC_ENDPOINT:-https://api.mainnet-beta.solana.com}
+      - WEB_SERVER_URL=${WEB_SERVER_URL:-wss://trade.01.xyz}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - MODE=${MODE:-live}
+    volumes:
+      - ./logs:/app/logs
+      - ./data:/app/data
+    restart: unless-stopped
+    networks:
+      - mm-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  mm-network:
+    driver: bridge

@@ -1,0 +1,44 @@
+{
+  "name": "01xyz-market-maker-bot",
+  "version": "1.0.0",
+  "description": "Professional Market Maker Bot for 01.xyz perpetual markets",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start:live": "ts-node src/cli.ts live",
+    "backtest": "ts-node src/cli.ts backtest",
+    "simulate": "ts-node src/cli.ts simulate",
+    "test:live": "ts-node src/cli.ts test",
+    "dev": "ts-node-dev --respawn src/cli.ts",
+    "clean": "rm -rf dist",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "market-maker",
+    "trading-bot",
+    "01xyz",
+    "solana",
+    "perpetual"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@n1xyz/nord-ts": "latest",
+    "@solana/web3.js": "^1.87.6",
+    "bs58": "^5.0.0",
+    "commander": "^11.1.0",
+    "dotenv": "^16.3.1",
+    "winston": "^3.11.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.5",
+    "@types/bs58": "^4.0.4",
+    "ts-node": "^10.9.2",
+    "ts-node-dev": "^2.0.0",
+    "typescript": "^5.3.3"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  }
+}
