@@ -1,802 +1,401 @@
-\# Technical Notes - 01.xyz Market Maker Bot
+# Technical Notes - 01.xyz Market Maker Bot
 
+## Architecture Overview
 
-
-\## Architecture Overview
-
-
-
-\### Core Components
-
-
+### Core Components
 
 ```
-
 ┌─────────────────────────────────────────────────┐
-
 │              MarketMakerLive                    │
-
 │  (Main orchestrator for live trading)           │
-
 └─────────────────────────────────────────────────┘
-
-&nbsp;         │
-
-&nbsp;         ├─► RiskManager
-
-&nbsp;         │   ├─ Margin checks
-
-&nbsp;         │   ├─ Position limits
-
-&nbsp;         │   ├─ Exposure monitoring
-
-&nbsp;         │   └─ Emergency cancel
-
-&nbsp;         │
-
-&nbsp;         ├─► SpreadCalculator
-
-&nbsp;         │   ├─ Dynamic spread
-
-&nbsp;         │   ├─ Order book analysis
-
-&nbsp;         │   ├─ Imbalance detection
-
-&nbsp;         │   └─ Mid price calculation
-
-&nbsp;         │
-
-&nbsp;         ├─► SizingCalculator
-
-&nbsp;         │   ├─ Fixed mode
-
-&nbsp;         │   ├─ Percentage mode
-
-&nbsp;         │   └─ Tiered mode
-
-&nbsp;         │
-
-&nbsp;         ├─► InventoryManager
-
-&nbsp;         │   ├─ Position ratio
-
-&nbsp;         │   ├─ Skew application
-
-&nbsp;         │   └─ Hedge detection
-
-&nbsp;         │
-
-&nbsp;         └─► HedgingEngine
-
-&nbsp;             └─ Auto-hedge execution
-
+          │
+          ├─► RiskManager
+          │   ├─ Margin checks
+          │   ├─ Position limits
+          │   ├─ Exposure monitoring
+          │   └─ Emergency cancel
+          │
+          ├─► SpreadCalculator
+          │   ├─ Dynamic spread
+          │   ├─ Order book analysis
+          │   ├─ Imbalance detection
+          │   └─ Mid price calculation
+          │
+          ├─► SizingCalculator
+          │   ├─ Fixed mode
+          │   ├─ Percentage mode
+          │   └─ Tiered mode
+          │
+          ├─► InventoryManager
+          │   ├─ Position ratio
+          │   ├─ Skew application
+          │   └─ Hedge detection
+          │
+          └─► HedgingEngine
+              └─ Auto-hedge execution
 ```
 
+## Key Algorithms
 
-
-\## Key Algorithms
-
-
-
-\### 1. Dynamic Spread Calculation
-
-
+### 1. Dynamic Spread Calculation
 
 ```typescript
-
-spread = MIN\_SPREAD + abs(imbalance) \* (MAX\_SPREAD - MIN\_SPREAD)
-
-
+spread = MIN_SPREAD + abs(imbalance) * (MAX_SPREAD - MIN_SPREAD)
 
 where:
-
-&nbsp; imbalance = (bidDepth - askDepth) / (bidDepth + askDepth)
-
-&nbsp; bidDepth = sum of top N bid levels
-
-&nbsp; askDepth = sum of top N ask levels
-
+  imbalance = (bidDepth - askDepth) / (bidDepth + askDepth)
+  bidDepth = sum of top N bid levels
+  askDepth = sum of top N ask levels
 ```
 
+**Purpose**: Widen spread when order book is imbalanced to avoid adverse selection.
 
-
-\*\*Purpose\*\*: Widen spread when order book is imbalanced to avoid adverse selection.
-
-
-
-\### 2. Inventory Skew
-
-
+### 2. Inventory Skew
 
 ```typescript
-
 if (positionRatio > 0.05):
-
-&nbsp; // Long position → shift prices up (encourage selling)
-
-&nbsp; skewFactor = positionRatio \* 0.002
-
-&nbsp; newPrice = basePrice \* (1 + skewFactor)
-
-&nbsp; 
-
+  // Long position → shift prices up (encourage selling)
+  skewFactor = positionRatio * 0.002
+  newPrice = basePrice * (1 + skewFactor)
+  
 else if (positionRatio < -0.05):
-
-&nbsp; // Short position → shift prices down (encourage buying)
-
-&nbsp; skewFactor = abs(positionRatio) \* 0.002
-
-&nbsp; newPrice = basePrice \* (1 - skewFactor)
-
+  // Short position → shift prices down (encourage buying)
+  skewFactor = abs(positionRatio) * 0.002
+  newPrice = basePrice * (1 - skewFactor)
 ```
 
+**Purpose**: Automatically move quotes away from current position to reduce inventory risk.
 
-
-\*\*Purpose\*\*: Automatically move quotes away from current position to reduce inventory risk.
-
-
-
-\### 3. Multi-Level Quoting
-
-
+### 3. Multi-Level Quoting
 
 ```typescript
-
 for (level = 0; level < maxLevels; level++):
-
-&nbsp; spacing = spread \* (level + 1) \* 0.5
-
-&nbsp; 
-
-&nbsp; bidPrice\[level] = baseBidPrice \* (1 - spacing)
-
-&nbsp; askPrice\[level] = baseAskPrice \* (1 + spacing)
-
-&nbsp; 
-
-&nbsp; size\[level] = calculateSize(level, mode)
-
+  spacing = spread * (level + 1) * 0.5
+  
+  bidPrice[level] = baseBidPrice * (1 - spacing)
+  askPrice[level] = baseAskPrice * (1 + spacing)
+  
+  size[level] = calculateSize(level, mode)
 ```
 
+**Purpose**: Provide liquidity at multiple price points, capturing more fills.
 
-
-\*\*Purpose\*\*: Provide liquidity at multiple price points, capturing more fills.
-
-
-
-\### 4. Risk Gates
-
-
+### 4. Risk Gates
 
 Before placing any quote:
 
-
-
 ```typescript
-
-1\. Check margin fraction >= 18%
-
-2\. Check free collateral >= MIN\_THRESHOLD
-
-3\. Check market exposure <= 30%
-
-4\. Check total exposure <= 60%
-
+1. Check margin fraction >= 18%
+2. Check free collateral >= MIN_THRESHOLD
+3. Check market exposure <= 30%
+4. Check total exposure <= 60%
 ```
 
+**Purpose**: Prevent over-leveraging and liquidation.
 
+## Data Flow
 
-\*\*Purpose\*\*: Prevent over-leveraging and liquidation.
-
-
-
-\## Data Flow
-
-
-
-\### Order Placement Flow
-
-
+### Order Placement Flow
 
 ```
-
 WebSocket Update
-
-&nbsp;   │
-
-&nbsp;   ▼
-
+    │
+    ▼
 Check Orderbook Health
-
-&nbsp;   │
-
-&nbsp;   ▼
-
+    │
+    ▼
 Risk Check
-
-&nbsp;   │
-
-&nbsp;   ▼
-
+    │
+    ▼
 Calculate Mid Price
-
-&nbsp;   │
-
-&nbsp;   ▼
-
+    │
+    ▼
 Calculate Dynamic Spread
-
-&nbsp;   │
-
-&nbsp;   ▼
-
+    │
+    ▼
 Apply Inventory Skew
-
-&nbsp;   │
-
-&nbsp;   ▼
-
+    │
+    ▼
 Calculate Level Sizes
-
-&nbsp;   │
-
-&nbsp;   ▼
-
+    │
+    ▼
 Generate Quote Levels
-
-&nbsp;   │
-
-&nbsp;   ▼
-
+    │
+    ▼
 Cancel Old Orders
-
-&nbsp;   │
-
-&nbsp;   ▼
-
+    │
+    ▼
 Place New Orders
-
-&nbsp;   │
-
-&nbsp;   ▼
-
+    │
+    ▼
 Update State
-
 ```
 
-
-
-\### Backtest Flow
-
-
+### Backtest Flow
 
 ```
-
 Load Historical Data
-
-&nbsp;   │
-
-&nbsp;   ▼
-
+    │
+    ▼
 For Each Bar:
-
-&nbsp;   │
-
-&nbsp;   ├─► Check Fills (probabilistic)
-
-&nbsp;   │
-
-&nbsp;   ├─► Cancel Old Orders
-
-&nbsp;   │
-
-&nbsp;   ├─► Update Unrealized PnL
-
-&nbsp;   │
-
-&nbsp;   ├─► Place New Quotes
-
-&nbsp;   │
-
-&nbsp;   └─► Track Equity
-
-&nbsp;   │
-
-&nbsp;   ▼
-
+    │
+    ├─► Check Fills (probabilistic)
+    │
+    ├─► Cancel Old Orders
+    │
+    ├─► Update Unrealized PnL
+    │
+    ├─► Place New Quotes
+    │
+    └─► Track Equity
+    │
+    ▼
 Calculate Metrics
-
 ```
 
+## Performance Considerations
 
+### WebSocket Handling
 
-\## Performance Considerations
+- **Throttling**: Orders placed only on significant orderbook changes
+- **Debouncing**: Minimum 100ms between requotes
+- **Reconnection**: Automatic reconnection with exponential backoff
 
+### Order Management
 
+- **Batch Cancellation**: Cancel all orders for a market in one call
+- **Level Validation**: Pre-validate all levels before placement
+- **Error Recovery**: Retry failed orders up to 3 times
 
-\### WebSocket Handling
+### Memory Usage
 
+- **Order History**: Keep only last 1000 orders in memory
+- **Equity Tracking**: Circular buffer for equity curve
+- **Log Rotation**: Automatic log file rotation at 10MB
 
+## Testing Strategy
 
-\- \*\*Throttling\*\*: Orders placed only on significant orderbook changes
-
-\- \*\*Debouncing\*\*: Minimum 100ms between requotes
-
-\- \*\*Reconnection\*\*: Automatic reconnection with exponential backoff
-
-
-
-\### Order Management
-
-
-
-\- \*\*Batch Cancellation\*\*: Cancel all orders for a market in one call
-
-\- \*\*Level Validation\*\*: Pre-validate all levels before placement
-
-\- \*\*Error Recovery\*\*: Retry failed orders up to 3 times
-
-
-
-\### Memory Usage
-
-
-
-\- \*\*Order History\*\*: Keep only last 1000 orders in memory
-
-\- \*\*Equity Tracking\*\*: Circular buffer for equity curve
-
-\- \*\*Log Rotation\*\*: Automatic log file rotation at 10MB
-
-
-
-\## Testing Strategy
-
-
-
-\### Unit Tests (Future)
-
-
+### Unit Tests (Future)
 
 ```typescript
-
 describe('SpreadCalculator', () => {
-
-&nbsp; it('should widen spread on imbalanced orderbook')
-
-&nbsp; it('should respect min/max bounds')
-
-&nbsp; it('should handle empty orderbook')
-
+  it('should widen spread on imbalanced orderbook')
+  it('should respect min/max bounds')
+  it('should handle empty orderbook')
 })
-
-
 
 describe('RiskManager', () => {
-
-&nbsp; it('should block trading on low margin')
-
-&nbsp; it('should enforce position limits')
-
-&nbsp; it('should calculate exposure correctly')
-
+  it('should block trading on low margin')
+  it('should enforce position limits')
+  it('should calculate exposure correctly')
 })
-
 ```
 
-
-
-\### Integration Tests
-
-
+### Integration Tests
 
 ```bash
-
-\# Test full flow with simulated data
-
+# Test full flow with simulated data
 npm run backtest -- --steps 1000
 
-
-
-\# Test illiquid market handling
-
+# Test illiquid market handling
 npm run simulate -- --type illiquid --steps 10000
 
-
-
-\# Test connection to 01.xyz
-
+# Test connection to 01.xyz
 npm run test:live
-
 ```
 
+## Deployment Best Practices
 
+### Production Checklist
 
-\## Deployment Best Practices
+- [ ] Use dedicated VPS/server
+- [ ] Setup monitoring (Datadog, Prometheus)
+- [ ] Configure log aggregation
+- [ ] Setup alerts for:
+  - Risk violations
+  - Connection drops
+  - PnL thresholds
+  - Error rates
+- [ ] Backup private keys securely
+- [ ] Document recovery procedures
+- [ ] Test failover scenarios
 
-
-
-\### Production Checklist
-
-
-
-\- \[ ] Use dedicated VPS/server
-
-\- \[ ] Setup monitoring (Datadog, Prometheus)
-
-\- \[ ] Configure log aggregation
-
-\- \[ ] Setup alerts for:
-
-&nbsp; - Risk violations
-
-&nbsp; - Connection drops
-
-&nbsp; - PnL thresholds
-
-&nbsp; - Error rates
-
-\- \[ ] Backup private keys securely
-
-\- \[ ] Document recovery procedures
-
-\- \[ ] Test failover scenarios
-
-
-
-\### Monitoring Metrics
-
-
+### Monitoring Metrics
 
 Key metrics to track:
 
-
-
 ```typescript
-
 {
-
-&nbsp; // Trading
-
-&nbsp; fillRate: number,
-
-&nbsp; avgSpread: number,
-
-&nbsp; dailyVolume: number,
-
-&nbsp; dailyPnL: number,
-
-&nbsp; 
-
-&nbsp; // Risk
-
-&nbsp; currentExposure: number,
-
-&nbsp; marginFraction: number,
-
-&nbsp; largestPosition: number,
-
-&nbsp; 
-
-&nbsp; // Operations
-
-&nbsp; uptime: number,
-
-&nbsp; websocketReconnects: number,
-
-&nbsp; orderFailureRate: number,
-
-&nbsp; avgLatency: number,
-
+  // Trading
+  fillRate: number,
+  avgSpread: number,
+  dailyVolume: number,
+  dailyPnL: number,
+  
+  // Risk
+  currentExposure: number,
+  marginFraction: number,
+  largestPosition: number,
+  
+  // Operations
+  uptime: number,
+  websocketReconnects: number,
+  orderFailureRate: number,
+  avgLatency: number,
 }
-
 ```
 
+### Scaling Considerations
 
+**Single Bot Instance**:
+- Can handle ~50 markets
+- 1-2 CPU cores
+- 512MB RAM
+- 100 Mbps network
 
-\### Scaling Considerations
+**Multiple Instances**:
+- Use separate wallets
+- Deploy across regions
+- Load balance via DNS
+- Coordinate via Redis
 
+## Security Considerations
 
-
-\*\*Single Bot Instance\*\*:
-
-\- Can handle ~50 markets
-
-\- 1-2 CPU cores
-
-\- 512MB RAM
-
-\- 100 Mbps network
-
-
-
-\*\*Multiple Instances\*\*:
-
-\- Use separate wallets
-
-\- Deploy across regions
-
-\- Load balance via DNS
-
-\- Coordinate via Redis
-
-
-
-\## Security Considerations
-
-
-
-\### Private Key Management
-
-
+### Private Key Management
 
 ```bash
+# Store in environment variable (development)
+export PRIVATE_KEY_BASE58="..."
 
-\# Store in environment variable (development)
-
-export PRIVATE\_KEY\_BASE58="..."
-
-
-
-\# Use secrets manager (production)
-
+# Use secrets manager (production)
 aws secretsmanager get-secret-value --secret-id mm-bot-key
 
-
-
-\# Hardware wallet (advanced)
-
-\# Connect via USB and sign transactions
-
+# Hardware wallet (advanced)
+# Connect via USB and sign transactions
 ```
 
-
-
-\### Network Security
-
-
+### Network Security
 
 ```typescript
-
 // Whitelist RPC endpoints
-
-const ALLOWED\_RPC = \[
-
-&nbsp; 'https://api.mainnet-beta.solana.com',
-
-&nbsp; 'https://solana-api.projectserum.com',
-
+const ALLOWED_RPC = [
+  'https://api.mainnet-beta.solana.com',
+  'https://solana-api.projectserum.com',
 ];
 
-
-
 // Use HTTPS only
-
-const WS\_URL = 'wss://trade.01.xyz'; // Not ws://
-
-
+const WS_URL = 'wss://trade.01.xyz'; // Not ws://
 
 // Validate responses
-
 if (!response.signature) {
-
-&nbsp; throw new Error('Invalid response');
-
+  throw new Error('Invalid response');
 }
-
 ```
 
-
-
-\### Rate Limiting
-
-
+### Rate Limiting
 
 ```typescript
-
 // Implement rate limiting
-
-const RATE\_LIMIT = {
-
-&nbsp; ordersPerSecond: 10,
-
-&nbsp; cancelsPerSecond: 20,
-
-&nbsp; requestsPerMinute: 600,
-
+const RATE_LIMIT = {
+  ordersPerSecond: 10,
+  cancelsPerSecond: 20,
+  requestsPerMinute: 600,
 };
 
-
-
 // Track and throttle
-
-if (ordersThisSecond > RATE\_LIMIT.ordersPerSecond) {
-
-&nbsp; await sleep(1000);
-
+if (ordersThisSecond > RATE_LIMIT.ordersPerSecond) {
+  await sleep(1000);
 }
-
 ```
 
+## Optimization Opportunities
 
+### Low-Hanging Fruit
 
-\## Optimization Opportunities
+1. **Caching**: Cache market data for 100ms
+2. **Batch Operations**: Batch order placements
+3. **Connection Pooling**: Reuse WebSocket connections
+4. **Lazy Loading**: Load markets on-demand
 
+### Advanced Optimizations
 
+1. **Machine Learning**: Predict fill probabilities
+2. **Order Flow Analysis**: Detect informed traders
+3. **Cross-Market Correlation**: Hedge across markets
+4. **Smart Order Routing**: Split orders across venues
 
-\### Low-Hanging Fruit
+## Troubleshooting Guide
 
+### Common Issues
 
-
-1\. \*\*Caching\*\*: Cache market data for 100ms
-
-2\. \*\*Batch Operations\*\*: Batch order placements
-
-3\. \*\*Connection Pooling\*\*: Reuse WebSocket connections
-
-4\. \*\*Lazy Loading\*\*: Load markets on-demand
-
-
-
-\### Advanced Optimizations
-
-
-
-1\. \*\*Machine Learning\*\*: Predict fill probabilities
-
-2\. \*\*Order Flow Analysis\*\*: Detect informed traders
-
-3\. \*\*Cross-Market Correlation\*\*: Hedge across markets
-
-4\. \*\*Smart Order Routing\*\*: Split orders across venues
-
-
-
-\## Troubleshooting Guide
-
-
-
-\### Common Issues
-
-
-
-\*\*Issue\*\*: Orders not filling
-
+**Issue**: Orders not filling
 ```
-
 Cause: Spreads too wide
-
 Fix: Reduce spread.min in config.ts
-
 ```
 
-
-
-\*\*Issue\*\*: Frequent risk violations
-
+**Issue**: Frequent risk violations
 ```
-
 Cause: Position limits too tight
-
 Fix: Increase risk.maxExposurePerMarket
-
 ```
 
-
-
-\*\*Issue\*\*: High memory usage
-
+**Issue**: High memory usage
 ```
-
 Cause: Order history not cleared
-
 Fix: Clear old orders periodically
-
 ```
 
-
-
-\*\*Issue\*\*: WebSocket disconnects
-
+**Issue**: WebSocket disconnects
 ```
-
 Cause: Network instability
-
 Fix: Implement exponential backoff retry
-
 ```
 
-
-
-\### Debug Mode
-
-
+### Debug Mode
 
 ```bash
+# Enable debug logging
+LOG_LEVEL=debug npm run start:live
 
-\# Enable debug logging
+# Trace WebSocket messages
+LOG_LEVEL=trace npm run start:live
 
-LOG\_LEVEL=debug npm run start:live
-
-
-
-\# Trace WebSocket messages
-
-LOG\_LEVEL=trace npm run start:live
-
-
-
-\# Profile performance
-
+# Profile performance
 node --prof dist/cli.js live
-
-node --prof-process isolate-\*.log > profile.txt
-
+node --prof-process isolate-*.log > profile.txt
 ```
 
+## Future Enhancements
 
+### Planned Features
 
-\## Future Enhancements
+- [ ] Multi-venue support (Drift, Mango)
+- [ ] Advanced hedging strategies
+- [ ] ML-based spread optimization
+- [ ] Grid trading mode
+- [ ] Telegram notifications
+- [ ] Web dashboard
+- [ ] Performance attribution
 
+### Research Areas
 
+- Optimal quote placement
+- Adverse selection detection
+- Market impact modeling
+- Dynamic sizing algorithms
+- Cross-market arbitrage
 
-\### Planned Features
+## References
 
-
-
-\- \[ ] Multi-venue support (Drift, Mango)
-
-\- \[ ] Advanced hedging strategies
-
-\- \[ ] ML-based spread optimization
-
-\- \[ ] Grid trading mode
-
-\- \[ ] Telegram notifications
-
-\- \[ ] Web dashboard
-
-\- \[ ] Performance attribution
-
-
-
-\### Research Areas
-
-
-
-\- Optimal quote placement
-
-\- Adverse selection detection
-
-\- Market impact modeling
-
-\- Dynamic sizing algorithms
-
-\- Cross-market arbitrage
-
-
-
-\## References
-
-
-
-\- \[01.xyz Documentation](https://docs.01.xyz/)
-
-\- \[Market Making Literature](https://arxiv.org/pdf/1105.3353.pdf)
-
-\- \[Solana Program Library](https://spl.solana.com/)
-
-\- \[Nord SDK Source](https://github.com/01protocol/nord-ts)
-
-
+- [01.xyz Documentation](https://docs.01.xyz/)
+- [Market Making Literature](https://arxiv.org/pdf/1105.3353.pdf)
+- [Solana Program Library](https://spl.solana.com/)
+- [Nord SDK Source](https://github.com/01protocol/nord-ts)
 
 ---
 
-
-
-\*\*Last Updated\*\*: January 2026
-
-\*\*Version\*\*: 1.0.0
-
-\*\*Author\*\*: Market Maker Bot Team
-
+**Last Updated**: January 2026
+**Version**: 1.0.0
+**Author**: Market Maker Bot Team

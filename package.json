@@ -1,24 +1,28 @@
 {
   "name": "01xyz-market-maker-bot",
-  "version": "1.0.0",
-  "description": "Professional Market Maker Bot for 01.xyz perpetual markets",
+  "version": "2.0.0",
+  "description": "Professional Market Maker Bot for 01.xyz perpetual markets with CEX oracle and clustering",
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",
     "start:live": "ts-node src/cli.ts live",
+    "start:cluster": "ts-node src/cli.ts cluster",
     "backtest": "ts-node src/cli.ts backtest",
     "simulate": "ts-node src/cli.ts simulate",
     "test:live": "ts-node src/cli.ts test",
     "dev": "ts-node-dev --respawn src/cli.ts",
     "clean": "rm -rf dist",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src --ext .ts",
+    "format": "prettier --write \"src/**/*.ts\""
   },
   "keywords": [
     "market-maker",
     "trading-bot",
     "01xyz",
     "solana",
-    "perpetual"
+    "perpetual",
+    "defi"
   ],
   "author": "",
   "license": "MIT",
@@ -28,11 +32,16 @@
     "bs58": "^5.0.0",
     "commander": "^11.1.0",
     "dotenv": "^16.3.1",
-    "winston": "^3.11.0"
+    "winston": "^3.11.0",
+    "prom-client": "^15.1.0"
   },
   "devDependencies": {
     "@types/node": "^20.10.5",
     "@types/bs58": "^4.0.4",
+    "@typescript-eslint/eslint-plugin": "^6.15.0",
+    "@typescript-eslint/parser": "^6.15.0",
+    "eslint": "^8.56.0",
+    "prettier": "^3.1.1",
     "ts-node": "^10.9.2",
     "ts-node-dev": "^2.0.0",
     "typescript": "^5.3.3"

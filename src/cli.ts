@@ -6,6 +6,7 @@ import { Keypair } from '@solana/web3.js';
 import bs58 from 'bs58';
 import { Nord, NordUser } from '@n1xyz/nord-ts';
 import { MarketMakerLive } from './live/mmLive';
+import { ProcessManager } from './cluster/processManager';
 import { BacktestEngine } from './backtest/engine';
 import { MarketSimulator } from './backtest/simulator';
 import { MetricsCalculator } from './backtest/metrics';
@@ -20,20 +21,24 @@ const program = new Command();
 
 program
   .name('01xyz-mm-bot')
-  .description('Professional Market Maker Bot for 01.xyz')
-  .version('1.0.0');
+  .description('Professional Market Maker Bot for 01.xyz with CEX oracle and clustering')
+  .version('2.0.0');
 
 /**
  * Live trading command
  */
 program
   .command('live')
-  .description('Start live market making')
+  .description('Start live market making (single process)')
   .option('-m, --market <marketId>', 'Trade specific market ID')
   .option('-t, --test', 'Run in test mode (paper trading)')
   .action(async (options) => {
     try {
-      logger.info('Starting live market maker');
+      logger.info('Starting live market maker', {
+        mode: options.test ? 'TEST' : 'LIVE',
+        oracleEnabled: CONFIG.oracle.enabled,
+        requoteThreshold: CONFIG.requoteThreshold,
+      });
 
       // Validate config
       validateConfig(CONFIG);
@@ -70,11 +75,17 @@ program
       const marketId = options.market ? parseInt(options.market) : undefined;
 
       if (options.test) {
-        logger.info('Running in TEST MODE (paper trading)');
+        logger.info('⚠️  Running in TEST MODE (paper trading)');
       }
 
       // Start trading
       await marketMaker.start(marketId);
+
+      // Setup status reporting
+      setInterval(async () => {
+        const status = await marketMaker.getStatus();
+        logger.info('Bot Status', status);
+      }, 60000); // Every minute
 
       // Handle graceful shutdown
       process.on('SIGINT', async () => {
@@ -94,6 +105,64 @@ program
 
     } catch (error) {
       logger.error('Live trading failed', { error });
+      process.exit(1);
+    }
+  });
+
+/**
+ * NEW: Cluster mode command
+ */
+program
+  .command('cluster')
+  .description('Start market making in multi-process cluster mode')
+  .action(async () => {
+    try {
+      logger.info('Starting cluster mode');
+
+      // Validate config
+      validateConfig(CONFIG);
+
+      if (!CONFIG.cluster.enabled) {
+        throw new Error('Cluster mode not enabled in config. Set CONFIG.cluster.enabled = true');
+      }
+
+      if (CONFIG.cluster.processGroups.length === 0) {
+        throw new Error('No process groups configured. Set CONFIG.cluster.processGroups');
+      }
+
+      logger.info('Cluster configuration', {
+        workers: CONFIG.cluster.processGroups.length,
+        markets: CONFIG.cluster.processGroups.flat().length,
+        groups: CONFIG.cluster.processGroups,
+      });
+
+      const manager = new ProcessManager();
+      await manager.startCluster();
+
+      // Setup status reporting
+      setInterval(() => {
+        const statuses = manager.getAllWorkersStatus();
+        logger.info('Cluster Status', { workers: statuses });
+      }, 60000); // Every minute
+
+      // Setup signal handlers
+      process.on('SIGINT', async () => {
+        logger.info('Received SIGINT, shutting down cluster...');
+        await manager.shutdown();
+        process.exit(0);
+      });
+
+      process.on('SIGTERM', async () => {
+        logger.info('Received SIGTERM, shutting down cluster...');
+        await manager.shutdown();
+        process.exit(0);
+      });
+
+      // Keep process alive
+      await new Promise(() => {});
+
+    } catch (error) {
+      logger.error('Cluster mode failed', { error });
       process.exit(1);
     }
   });
@@ -228,6 +297,9 @@ program
       console.log('\n✓ Testing configuration...');
       validateConfig(CONFIG);
       console.log('✓ Configuration valid');
+      console.log(`  - Oracle: ${CONFIG.oracle.enabled ? 'ENABLED' : 'DISABLED'}`);
+      console.log(`  - Requote threshold: ${(CONFIG.requoteThreshold * 100).toFixed(3)}%`);
+      console.log(`  - Cluster mode: ${CONFIG.cluster.enabled ? 'ENABLED' : 'DISABLED'}`);
 
       // Test 2: Environment variables
       console.log('\n✓ Testing environment variables...');
@@ -260,6 +332,24 @@ program
       markets.slice(0, 5).forEach(m => {
         console.log(`  - ${m.symbol} (ID: ${m.marketId})`);
       });
+
+      // Test 5: Oracle (if enabled)
+      if (CONFIG.oracle.enabled) {
+        console.log('\n✓ Testing CEX price oracle...');
+        const { PriceOracle } = await import('./core/priceOracle');
+        const oracle = new PriceOracle(CONFIG.oracle);
+        
+        const testSymbol = 'BTC';
+        const price = await oracle.getPrice(testSymbol);
+        
+        if (price) {
+          console.log(`✓ Oracle fetched ${testSymbol} price: $${price.mid.toFixed(2)}`);
+          console.log(`  Source: ${price.source}`);
+          console.log(`  Spread: ${(price.spread * 100).toFixed(3)}%`);
+        } else {
+          console.log('⚠️  Oracle enabled but price fetch failed');
+        }
+      }
 
       console.log('\n✅ All tests passed!\n');
 

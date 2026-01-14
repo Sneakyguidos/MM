@@ -1,0 +1,52 @@
+[Unit]
+Description=01.xyz Market Maker Bot
+Documentation=https://github.com/Sneakyguidos/MM
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=REPLACE_WITH_YOUR_USER
+Group=REPLACE_WITH_YOUR_GROUP
+WorkingDirectory=/path/to/MM
+
+# Main process
+ExecStart=/usr/bin/npm run start:live
+
+# Restart policy
+Restart=always
+RestartSec=10
+
+# Runtime limits
+RuntimeMaxSec=3600
+TimeoutStartSec=60
+TimeoutStopSec=30
+
+# Resource limits
+LimitNOFILE=4096
+LimitNPROC=512
+
+# Logging
+StandardOutput=append:/var/log/mm-bot/output.log
+StandardError=append:/var/log/mm-bot/error.log
+SyslogIdentifier=mm-bot
+
+# Environment
+Environment="NODE_ENV=production"
+Environment="LOG_LEVEL=info"
+EnvironmentFile=/path/to/MM/.env
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/path/to/MM/logs /path/to/MM/data
+
+# Process management
+KillMode=mixed
+KillSignal=SIGTERM
+SendSIGKILL=no
+
+[Install]
+WantedBy=multi-user.target
